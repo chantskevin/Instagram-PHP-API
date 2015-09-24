@@ -133,8 +133,8 @@ class Instagram
     /**
      * Search for a user.
      *
-     * @param string $name Instagram username
-     * @param int $limit Limit of returned results
+     * @param string $name  Instagram username
+     * @param int    $limit Limit of returned results
      *
      * @return mixed
      */
@@ -159,14 +159,11 @@ class Instagram
      */
     public function getUser($id = 0)
     {
-        $auth = false;
-
         if ($id === 0 && isset($this->_accesstoken)) {
             $id = 'self';
-            $auth = true;
         }
 
-        return $this->_makeCall('users/' . $id, $auth);
+        return $this->_makeCall('users/' . $id, strlen($this->getAccessToken()));
     }
 
     /**
@@ -189,8 +186,8 @@ class Instagram
     /**
      * Get user recent media.
      *
-     * @param int|string $id Instagram user ID
-     * @param int $limit Limit of returned results
+     * @param int|string $id    Instagram user ID
+     * @param int        $limit Limit of returned results
      *
      * @return mixed
      */
@@ -226,8 +223,8 @@ class Instagram
     /**
      * Get the list of users this user follows
      *
-     * @param int|string $id Instagram user ID.
-     * @param int $limit Limit of returned results
+     * @param int|string $id    Instagram user ID.
+     * @param int        $limit Limit of returned results
      *
      * @return mixed
      */
@@ -245,8 +242,8 @@ class Instagram
     /**
      * Get the list of users this user is followed by.
      *
-     * @param int|string $id Instagram user ID
-     * @param int $limit Limit of returned results
+     * @param int|string $id    Instagram user ID
+     * @param int        $limit Limit of returned results
      *
      * @return mixed
      */
@@ -287,7 +284,7 @@ class Instagram
      * Modify the relationship between the current user and the target user.
      *
      * @param string $action Action command (follow/unfollow/block/unblock/approve/deny)
-     * @param int $user Target user ID
+     * @param int    $user   Target user ID
      *
      * @return mixed
      *
@@ -305,11 +302,11 @@ class Instagram
     /**
      * Search media by its location.
      *
-     * @param float $lat Latitude of the center search coordinate
-     * @param float $lng Longitude of the center search coordinate
-     * @param int $distance Distance in metres (default is 1km (distance=1000), max. is 5km)
-     * @param long $minTimestamp Media taken later than this timestamp (default: 5 days ago)
-     * @param long $maxTimestamp Media taken earlier than this timestamp (default: now)
+     * @param float $lat          Latitude of the center search coordinate
+     * @param float $lng          Longitude of the center search coordinate
+     * @param int   $distance     Distance in metres (default is 1km (distance=1000), max. is 5km)
+     * @param long  $minTimestamp Media taken later than this timestamp (default: 5 days ago)
+     * @param long  $maxTimestamp Media taken earlier than this timestamp (default: now)
      *
      * @return mixed
      */
@@ -373,8 +370,8 @@ class Instagram
     /**
      * Get a recently tagged media.
      *
-     * @param string $name Valid tag name
-     * @param int $limit Limit of returned results
+     * @param string $name  Valid tag name
+     * @param int    $limit Limit of returned results
      *
      * @return mixed
      */
@@ -416,7 +413,7 @@ class Instagram
     /**
      * Add a comment on a media.
      *
-     * @param int $id Instagram media ID
+     * @param int    $id   Instagram media ID
      * @param string $text Comment content
      *
      * @return mixed
@@ -429,7 +426,7 @@ class Instagram
     /**
      * Remove user comment on a media.
      *
-     * @param int $id Instagram media ID
+     * @param int    $id        Instagram media ID
      * @param string $commentID User comment ID
      *
      * @return mixed
@@ -490,9 +487,9 @@ class Instagram
     /**
      * Get recent media from a given location.
      *
-     * @param float $lat Latitude of the center search coordinate
-     * @param float $lng Longitude of the center search coordinate
-     * @param int $distance Distance in meter (max. distance: 5km = 5000)
+     * @param float $lat      Latitude of the center search coordinate
+     * @param float $lng      Longitude of the center search coordinate
+     * @param int   $distance Distance in meter (max. distance: 5km = 5000)
      *
      * @return mixed
      */
@@ -504,8 +501,8 @@ class Instagram
     /**
      * Pagination feature.
      *
-     * @param object $obj Instagram object returned by a method
-     * @param int $limit Limit of returned results
+     * @param object $obj   Instagram object returned by a method
+     * @param int    $limit Limit of returned results
      *
      * @return mixed
      *
@@ -518,21 +515,7 @@ class Instagram
                 return;
             }
 
-            $apiCall = explode('?', $obj->pagination->next_url);
-
-            if (count($apiCall) < 2) {
-                return;
-            }
-
-            $function = str_replace(self::API_URL, '', $apiCall[0]);
-
-            $auth = (strpos($apiCall[1], 'access_token') !== false);
-
-            if (isset($obj->pagination->next_max_id)) {
-                return $this->_makeCall($function, $auth, array('max_id' => $obj->pagination->next_max_id, 'count' => $limit));
-            }
-
-            return $this->_makeCall($function, $auth, array('cursor' => $obj->pagination->next_cursor, 'count' => $limit));
+            return $this->_paginationMakeCall($obj->pagination->next_url);
         }
 
         throw new InstagramException("Error: pagination() | This method doesn't support pagination.");
@@ -541,8 +524,8 @@ class Instagram
     /**
      * Get the OAuth data of a user by the returned callback code.
      *
-     * @param string $code OAuth2 code variable (after a successful login)
-     * @param bool $token If it's true, only the access token will be returned
+     * @param string $code  OAuth2 code variable (after a successful login)
+     * @param bool   $token If it's true, only the access token will be returned
      *
      * @return mixed
      */
@@ -564,10 +547,51 @@ class Instagram
     /**
      * The call operator.
      *
+     * @param string $nextURL next_url from pagination
+     *
+     * @return mixed
+     *
+     * @throws \MetzWeb\Instagram\InstagramException
+     */
+    protected function _paginationMakeCall($nextURL)
+    {
+        $headerData = array('Accept: application/json');
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $nextURL);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headerData);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 20);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 90);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_HEADER, true);
+
+        $jsonData = curl_exec($ch);
+        // split header from JSON data
+        // and assign each to a variable
+        list($headerContent, $jsonData) = explode("\r\n\r\n", $jsonData, 2);
+
+        // convert header content into an array
+        $headers = $this->processHeaders($headerContent);
+
+        // get the 'X-Ratelimit-Remaining' header value
+        $this->_xRateLimitRemaining = $headers['X-Ratelimit-Remaining'];
+
+        if (!$jsonData) {
+            throw new InstagramException('Error: _makeCall() - cURL error: ' . curl_error($ch));
+        }
+
+        curl_close($ch);
+
+        return json_decode($jsonData);
+    }
+
+    /**
+     * The call operator.
+     *
      * @param string $function API resource path
-     * @param bool $auth Whether the function requires an access token
-     * @param array $params Additional request parameters
-     * @param string $method Request type GET|POST
+     * @param bool   $auth     Whether the function requires an access token
+     * @param array  $params   Additional request parameters
+     * @param string $method   Request type GET|POST
      *
      * @return mixed
      *
